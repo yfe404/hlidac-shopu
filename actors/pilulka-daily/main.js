@@ -83,6 +83,20 @@ function initialRequests(country, type, urls) {
   return initialCategoriesUrl(country);
 }
 
+/**
+ * Extracts plain text content from HTML string.
+ * Removes all HTML tags and returns trimmed text content.
+ * HTML entities are automatically decoded by the DOM parser.
+ *
+ * @param {string|null|undefined} textWithHTML - HTML string to extract text from
+ * @returns {string|null} Extracted and trimmed text content, or null if input is falsy or empty
+ */
+function extractTextFromHtml(textWithHTML) {
+  if (!textWithHTML) return null;
+  const { document } = parseHTML(`<div>${textWithHTML}</div>`);
+  return document.querySelector('*')?.textContent?.trim() || null;
+}
+
 function defRouter(processedIds, stats) {
   return createHttpRouter({
     /** @param {HttpCrawlingContext} context */
@@ -108,9 +122,13 @@ function defRouter(processedIds, stats) {
       );
       const product = data.find(x => x["@type"] === "Product");
       const title = product?.name;
-      const currentPrice = product?.offers?.price;
 
-      if (currentPrice == null || Number.isNaN(currentPrice) || currentPrice < 0) {
+      const productPrice  = product?.offers?.price
+      let currentPrice;
+      let originalPrice;
+      let isDiscounted = false;
+
+      if (productPrice == null || Number.isNaN(productPrice) || productPrice < 0) {
         stats.inc("itemNoPrice");
         log.warning("Item has no price. Skipping...", { url: itemUrl });
         return;
@@ -118,16 +136,45 @@ function defRouter(processedIds, stats) {
 
       const inStock = product?.offers?.availability === "https://schema.org/InStock";
       const imageUrl = product?.image?.[0];
-      const shortDesc = product?.description;
+
+      const shortDesc = extractTextFromHtml(product?.description);
 
       const { id: itemId } = document.querySelector("[componentname='catalog.product']");
-      const originalPrice = parseFloatText(
+      const oldPrice = parseFloatText(
         cleanPriceText(document.querySelector(`.product-price-container .product-card-price__old`)?.textContent ?? "")
       );
-      const isDiscounted = !Number.isNaN(originalPrice) && originalPrice > 0;
-      const priceWithCode = parseFloatText(
-        cleanPriceText(document.querySelector(`.price-with-code__price`)?.textContent ?? "")
-      );
+
+      const giftElement = document.querySelector(`.giftEvents__item`);
+      const giftPriceElement = document.querySelector(`.giftEvents__price__price`);
+
+      const hasCouponPrice = Boolean(giftPriceElement)
+        && !/pro\s+členy\s+Pilulka/i.test(giftElement.textContent);
+
+      const hasDiscount = !Number.isNaN(oldPrice) && oldPrice > 0;
+
+      if (!!giftPriceElement && !hasCouponPrice) {
+        log.warning("Product has discount price only for club members", { url: itemUrl });
+      }
+
+      if (hasCouponPrice) {
+        currentPrice = parseFloatText(
+          cleanPriceText(giftPriceElement?.textContent ?? "")
+        );
+        originalPrice = oldPrice ?? productPrice;
+        isDiscounted = true;
+        log.info("Product has discount", { url: itemUrl });
+      } else if (hasDiscount) {
+        const priceWithCode = parseFloatText(
+          cleanPriceText(document.querySelector(`.price-with-code__price`)?.textContent ?? "")
+        );
+
+        currentPrice = priceWithCode ?? productPrice;
+        originalPrice = oldPrice ?? null;
+        isDiscounted = true;
+      } else {
+        currentPrice = productPrice
+        originalPrice = null;
+      }
 
       const breadcrumbs = product?.category?.split(" / ").join(" > "); // "Foo / Bar / Baz" -> "Foo > Bar > Baz"
 
@@ -143,8 +190,8 @@ function defRouter(processedIds, stats) {
             shortDesc,
             inStock,
             category: breadcrumbs,
-            originalPrice: isDiscounted ? originalPrice : null,
-            currentPrice: priceWithCode ?? currentPrice,
+            originalPrice,
+            currentPrice,
             discounted: isDiscounted
           }
         ],

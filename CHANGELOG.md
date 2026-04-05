@@ -1,11 +1,19 @@
 # Extension
 
+## 2.4.5
+* Fixed Datart slug extraction
+* Fixed Grizly rendering
+
+## 2.4.4
+* Fixed Pilulka current price extraction
+* Fixed Tchibo.cz rendering
+
 ## 2.4.3
 * Fixed Pilulka rendering
 * Fixed Notino original price extraction
 
 ## 2.4.2
-* Fixed Grizzly original price extraction
+* Fixed Grizly original price extraction
 * Fixed Globus current price extraction
 * Fixed Hornbach current price extraction
 * Fixed Pilulka original price extraction

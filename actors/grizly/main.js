@@ -1,4 +1,4 @@
-import { Dataset, HttpCrawler, createHttpRouter } from "@crawlee/http";
+import { HttpCrawler, createHttpRouter } from "@crawlee/http";
 import { ActorType } from "@hlidac-shopu/actors-common/actor-type.js";
 import { getInput } from "@hlidac-shopu/actors-common/crawler.js";
 import { parseHTML } from "@hlidac-shopu/actors-common/dom.js";
@@ -40,7 +40,7 @@ function filterTestRequests(requests, userData) {
 }
 
 function categoriesRequests(document, userData, log) {
-  const links = document.querySelectorAll(".sub-menu--3 li a");
+  const links = document.querySelectorAll(".sub-menu li a");
   return links.map(link => {
     log.debug(`Queued category "${link.innerText.trim()}"`);
     const href = link.getAttribute("href");
@@ -59,11 +59,10 @@ function categoriesRequests(document, userData, log) {
  */
 function parsePrices(prices) {
   const priceVat = cleanPrice(prices.querySelector(".pricevat.price")?.innerText?.trim());
-  const priceRecom = cleanPrice(prices.querySelector(".price-recom")?.innerText?.trim());
-  const priceSaleCode = cleanPrice(prices.querySelector(".sale-code__price")?.innerText?.trim());
+  const priceSaleCode = cleanPrice(prices.querySelector(".sale-code__text")?.innerText?.trim());
 
-  const currentPrice = priceSaleCode ?? priceVat ?? null;
-  const originalPrice = priceRecom ?? priceVat ?? null;
+  const currentPrice = priceSaleCode ? priceSaleCode : priceVat;
+  const originalPrice = priceSaleCode ? priceVat : null;
   return { currentPrice, originalPrice };
 }
 
@@ -73,22 +72,22 @@ function parsePrices(prices) {
  * @return {Product[]}
  */
 function extractProducts(document, country) {
-  const category = document.querySelector("h1").innerText.trim();
+  const category = document.querySelector("[property='og:title']").getAttribute('content');
   const products = document.querySelectorAll(".content__catagories .product");
 
   return products.map(product => {
     const itemId = product.dataset.id;
     const itemUrl = completeUrl(country, product.querySelector("h3 a").href);
-    const itemName = product.querySelector(".product__header-name").innerText;
-    const img = completeUrl(country, product.querySelector(".product__image img").src);
+    const itemName = product.querySelector(".product__name").innerText.trim();
+    const img = completeUrl(country, product.querySelector(".product--image img").src);
 
     const prices = product.querySelector(".product__prices");
     const { currentPrice, originalPrice } = parsePrices(prices);
 
-    const inStock = !product.querySelector(".watchDog");
+    const inStock = !product.querySelector(".avail_U");
     const currency = currencyByCountry.get(country);
     return {
-      slug: new URL(itemUrl).pathname,
+      slug: new URL(itemUrl).pathname.replaceAll(/\//g, ""),
       itemId,
       itemUrl,
       itemName,
@@ -114,6 +113,11 @@ function defRouter({ stats }) {
       const { document } = parseHTML(body.toString());
       const requests = categoriesRequests(document, userData, log);
       const filtered = filterTestRequests(requests, userData);
+
+      if (!filtered.length) {
+        throw new Error(`Links to category pages were not found on the start page`);
+      }
+
       stats.add("categories", filtered.length);
       await crawler.addRequests(filtered);
     },
@@ -125,9 +129,10 @@ function defRouter({ stats }) {
       const { url, userData } = request;
       const { country, type, category } = userData;
       const { document } = parseHTML(body.toString());
-      const categoryProductsCountNode = document.querySelector("#itemscount")?.value;
+      const categoryProductsCountNode = document.querySelector(".item-count")?.value;
+
       if (!categoryProductsCountNode) {
-        return log.error(`No products count node found on ${url}`);
+        return log.error(`No products count node found on ${url}.`); // It probably is not a typical category page
       }
 
       const nextPageButton = document.querySelector(".next");
@@ -142,7 +147,7 @@ function defRouter({ stats }) {
       }
       const products = extractProducts(document, country);
       stats.add("items", products.length);
-      await Dataset.pushData(products);
+      await Actor.pushData(products);
     }
   });
 }
@@ -174,7 +179,7 @@ async function main() {
     country = Country.CZ,
     proxyGroups,
     urls,
-    maxConcurrency = 25,
+    maxConcurrency = 3,
     maxRequestRetries
   } = await getInput();
 

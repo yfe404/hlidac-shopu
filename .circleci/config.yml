@@ -9,17 +9,16 @@ orbs:
   node: circleci/node@7.2.1
   pulumi: pulumi/pulumi@2.1.0
   rollbar: rollbar/deploy@1.0.1
-  slack: circleci/slack@6.0.0
+  slack: circleci/slack@6.1.2
 
 commands:
   install_packages:
     steps:
       - node/install
       - node/install-yarn
-      - node/install-packages:
-          pkg-manager: yarn-berry
-          cache-version: v3
-          override-ci-command: yarn install --immutable
+      - run:
+          name: Install dependencies
+          command: yarn install --immutable
   read_deployment_envs:
     parameters:
       pulumi_backend_uri:
@@ -90,7 +89,7 @@ jobs:
   test-actors:
     docker:
       - image: cimg/node:current
-    resource_class: arm.medium
+    resource_class: topmonks/hetzner
     steps:
       - checkout
       - install_packages
@@ -108,15 +107,14 @@ jobs:
   test-api:
     docker:
       - image: cimg/node:current
-    resource_class: arm.medium
+    resource_class: topmonks/hetzner
     steps:
       - checkout
       - node/install
       - node/install-yarn
-      - node/install-packages:
-          pkg-manager: yarn-berry
-          cache-version: v2-api
-          override-ci-command: yarn workspaces focus hlidac-shopu @hlidac-shopu/lib @hlidac-shopu/api-lambdas
+      - run:
+          name: Install dependencies
+          command: yarn workspaces focus hlidac-shopu @hlidac-shopu/lib @hlidac-shopu/api-lambdas
       - run:
           name: Lint API
           command: yarn lint:api
@@ -131,15 +129,15 @@ jobs:
   test-lib:
     docker:
       - image: cimg/node:current-browsers
+    resource_class: topmonks/hetzner
     steps:
       - checkout
       - browser-tools/install_chrome
       - node/install
       - node/install-yarn
-      - node/install-packages:
-          pkg-manager: yarn-berry
-          cache-version: v2-lib
-          override-ci-command: yarn workspaces focus hlidac-shopu @hlidac-shopu/lib
+      - run:
+          name: Install dependencies
+          command: yarn workspaces focus hlidac-shopu @hlidac-shopu/lib
       - run:
           name: Run tests
           command: yarn test:lib
@@ -158,15 +156,14 @@ jobs:
   build-website:
     docker:
       - image: cimg/node:current
-    resource_class: arm.medium
+    resource_class: topmonks/hetzner
     steps:
       - checkout
       - node/install
       - node/install-yarn
-      - node/install-packages:
-          pkg-manager: yarn-berry
-          cache-version: v2-web
-          override-ci-command: yarn workspaces focus hlidac-shopu @hlidac-shopu/lib @hlidac-shopu/web
+      - run:
+          name: Install dependencies
+          command: yarn workspaces focus hlidac-shopu @hlidac-shopu/lib @hlidac-shopu/web
       - run:
           name: Lint website
           command: yarn lint:website
@@ -194,15 +191,14 @@ jobs:
   build-web-extension:
     docker:
       - image: cimg/node:current
-    resource_class: arm.medium
+    resource_class: topmonks/hetzner
     steps:
       - checkout
       - node/install
       - node/install-yarn
-      - node/install-packages:
-          pkg-manager: yarn-berry
-          cache-version: v2-ext
-          override-ci-command: yarn workspaces focus hlidac-shopu @hlidac-shopu/lib @hlidac-shopu/extension
+      - run:
+          name: Install dependencies
+          command: yarn workspaces focus hlidac-shopu @hlidac-shopu/lib @hlidac-shopu/extension
       - run:
           name: Build extension bundle
           command: yarn build:extension
@@ -234,9 +230,9 @@ jobs:
     # - Push new actor with current extension
     # - Download sample set of URLs from shops
     # - Run script that will start actor with given URLs and collect screenshots
-    machine:
-      image: ubuntu-2204:2022.10.2
-    # resource_class: arm.medium
+    docker:
+      - image: cimg/node:current
+    resource_class: topmonks/hetzner
     environment:
       AWS_STS_REGIONAL_ENDPOINTS: regional
     steps:
@@ -256,17 +252,16 @@ jobs:
         type: string
     docker:
       - image: cimg/node:current
-    resource_class: arm.medium
+    resource_class: topmonks/hetzner
     steps:
       - checkout
       - attach_workspace:
           at: .
       - node/install
       - node/install-yarn
-      - node/install-packages:
-          pkg-manager: yarn-berry
-          cache-version: v2-tools
-          override-ci-command: yarn workspaces focus hlidac-shopu
+      - run:
+          name: Install dependencies
+          command: yarn workspaces focus hlidac-shopu
       - run:
           name: Publish extension
           command: yarn publish:<< parameters.browser >>
@@ -281,8 +276,9 @@ jobs:
           channel: ntf-hlidac-shopu
 
   publish-apple-apps:
-    machine:
-      image: ubuntu-2204:2022.10.2
+    docker:
+      - image: cimg/base:current
+    resource_class: topmonks/hetzner
     steps:
       - run:
           name: Refer to xcode cloud
@@ -291,7 +287,7 @@ jobs:
   provision:
     docker:
       - image: cimg/node:current
-    resource_class: arm.medium
+    resource_class: topmonks/hetzner
     environment:
       AWS_STS_REGIONAL_ENDPOINTS: regional
     steps:
@@ -300,10 +296,9 @@ jobs:
           cloud-url: s3://pulumi.hlidacshopu.cz
       - node/install
       - node/install-yarn
-      - node/install-packages:
-          pkg-manager: yarn-berry
-          cache-version: v2-infra
-          override-ci-command: yarn workspaces focus @hlidac-shopu/infrastructure @hlidac-shopu/api-lambdas
+      - run:
+          name: Install dependencies
+          command: yarn workspaces focus @hlidac-shopu/infrastructure @hlidac-shopu/api-lambdas
       - run:
           working_directory: infrastructure
           command: pulumi stack select hlidac-shopu-prod
@@ -319,17 +314,16 @@ jobs:
   preview-provision:
     docker:
       - image: cimg/node:current
-    resource_class: arm.medium
+    resource_class: topmonks/hetzner
     steps:
       - checkout
       - pulumi/login:
           cloud-url: s3://pulumi.hlidacshopu.cz
       - node/install
       - node/install-yarn
-      - node/install-packages:
-          pkg-manager: yarn-berry
-          cache-version: v2-infra
-          override-ci-command: yarn workspaces focus @hlidac-shopu/infrastructure @hlidac-shopu/api-lambdas
+      - run:
+          name: Install dependencies
+          command: yarn workspaces focus @hlidac-shopu/infrastructure @hlidac-shopu/api-lambdas
       - run:
           working_directory: infrastructure
           command: pulumi stack select hlidac-shopu-prod
@@ -348,7 +342,9 @@ jobs:
       after_s3_sync:
         type: steps
         default: []
-    executor: aws-cli/default
+    docker:
+      - image: cimg/base:current
+    resource_class: topmonks/hetzner
     environment:
       ROLLBAR_ACCESS_TOKEN: "224cde202c354c2cabe73cf7ae008471"
     steps:
@@ -367,6 +363,7 @@ jobs:
   merge_pr:
     docker:
       - image: cimg/base:current
+    resource_class: topmonks/hetzner
     steps:
       - checkout
       - github/install
@@ -380,6 +377,7 @@ jobs:
   github_release:
     docker:
       - image: cimg/base:current
+    resource_class: topmonks/hetzner
     steps:
       - checkout
       - attach_workspace:

@@ -1,5 +1,6 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { S3Client } from "@aws-sdk/client-s3";
+import { UTCDate } from "@date-fns/utc";
 import { parseItemDetails, shopHost } from "@hlidac-shopu/lib/shops.mjs";
 import { getClaimedDiscount, prepareData, realDiscount } from "../discount.mjs";
 import { notFound, response, withCORS } from "../http.mjs";
@@ -23,16 +24,17 @@ function createDataset(data) {
   const originalPrice = new Array(data.length);
   const currentPrice = new Array(data.length);
 
-  data.forEach((item, i) => {
+  for (let i = 0; i < data.length; i++){
+    const item = data[i];
     originalPrice[i] = {
       x: item.date,
-      y: item?.originalPrice
+      y: item.originalPrice
     };
     currentPrice[i] = {
       x: item.date,
-      y: item?.currentPrice
+      y: item.currentPrice
     };
-  });
+  }
 
   return { originalPrice, currentPrice };
 }
@@ -94,7 +96,7 @@ export async function handler(event) {
       getParsedData(db, shop)
     ]);
     console.timeEnd(`data fetching ${now}`);
-
+    
     if (!meta) {
       return withCORS(["GET", "OPTIONS"])(
         notFound({
@@ -120,7 +122,7 @@ export async function handler(event) {
     const rows = prepareData(priceHistory);
     const { currentPrice, originalPrice, imageUrl } = Object.assign({}, extraData, scrapedData(params));
     if (currentPrice) {
-      rows.push({ currentPrice, originalPrice, date: new Date() });
+      rows.push({ currentPrice, originalPrice, date: new UTCDate() });
     }
     console.timeEnd("data preparation");
 

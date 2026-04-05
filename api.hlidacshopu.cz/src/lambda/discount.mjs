@@ -1,3 +1,4 @@
+import { utc, UTCDate } from "@date-fns/utc";
 import { eachDayOfInterval } from "date-fns/eachDayOfInterval";
 import { endOfToday } from "date-fns/endOfToday";
 import { isAfter } from "date-fns/isAfter";
@@ -39,7 +40,10 @@ function euDiscount(lastDiscountDate, lastIncreaseDate, series) {
   const startDate = subDays(lastDiscountDate, 30);
   // find lowest price in 30 days interval before sale action
   const minPrice = series
-    .filter(([date, price]) => Boolean(price) && isWithinInterval(date, { start: startDate, end: lastDiscountDate }))
+    .filter(([date, price]) => Boolean(price) && isWithinInterval(date, {
+      start: startDate,
+      end: lastDiscountDate
+    }, { in: utc }))
     .map(([, price]) => price)
     .reduce((a, b) => Math.min(a, b), Number.MAX_SAFE_INTEGER);
   const [, currentPrice] = last(series);
@@ -104,9 +108,9 @@ const saleActionInterval = 90;
  */
 const isInLastDays = days => date =>
   isWithinInterval(date, {
-    start: subDays(new Date(), days),
-    end: new Date()
-  });
+    start: subDays(new UTCDate(), days, { in: utc }),
+    end: new UTCDate()
+  }, { in: utc });
 
 /**
  *
@@ -201,20 +205,21 @@ export function getClaimedDiscount(data) {
 export function prepareData(priceHistory) {
   const rows = Array.isArray(priceHistory) ? priceHistory : priceHistory.entries;
 
-  // TODO: remove parsing after transition to S3 based API
   const data = rows.map(({ o, c, d }) => ({
     currentPrice: c,
     originalPrice: o,
-    date: new Date(d)
+    date: new UTCDate(d)
   }));
 
   const dataMap = new Map(data.map(x => [x.date.getTime(), x]));
   const days = eachDayOfInterval({
     start: head(data)?.date,
-    end: endOfToday()
-  });
+    end: endOfToday({ in: utc })
+  }, { in: utc });
+
 
   let prevDay = head(data);
+
   /**
    * @param {Date} date
    * @returns {DataRow}
